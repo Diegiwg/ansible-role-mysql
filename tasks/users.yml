@@ -1,6 +1,29 @@
 ---
-- name: Ensure MySQL users are present.
-  mysql_user:
+# For MySQL >= 8.0, use caching_sha2_password since mysql_native_password
+# is disabled by default in MySQL 8.4+ and will be removed in MySQL 9.0.
+# See: https://dev.mysql.com/doc/refman/8.4/en/native-pluggable-authentication.html
+- name: Ensure MySQL users are present (MySQL >= 8.0).
+  community.mysql.mysql_user:
+    name: "{{ item.name }}"
+    host: "{{ item.host | default('localhost') }}"
+    plugin: "{{ item.plugin | default('caching_sha2_password') }}"
+    plugin_auth_string: "{{ item.password }}"
+    priv: "{{ item.priv | default('*.*:USAGE') }}"
+    state: "{{ item.state | default('present') }}"
+    append_privs: "{{ item.append_privs | default(false) }}"
+    column_case_sensitive: "{{ item.case_sensitive | default(false) }}"
+    update_password: "{{ item.update_password | default('always') }}"
+    tls_requires: "{{ item.tls_requires | default({}) }}"
+  with_items: "{{ mysql_users }}"
+  no_log: "{{ mysql_hide_passwords }}"
+  when:
+    - mysql_users | length > 0
+    - mysql_daemon == 'mysql'
+    - mysql_cli_version is version('8.0', '>=')
+
+# For MySQL < 8.0 and MariaDB, use traditional password-based authentication
+- name: Ensure MySQL users are present (MySQL < 8.0 or MariaDB).
+  community.mysql.mysql_user:
     name: "{{ item.name }}"
     host: "{{ item.host | default('localhost') }}"
     password: "{{ item.password }}"
@@ -13,3 +36,6 @@
     tls_requires: "{{ item.tls_requires | default({}) }}"
   with_items: "{{ mysql_users }}"
   no_log: "{{ mysql_hide_passwords }}"
+  when:
+    - mysql_users | length > 0
+    - mysql_daemon == 'mariadb' or mysql_cli_version is version('8.0', '<')
